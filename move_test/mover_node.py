@@ -29,7 +29,7 @@ class Mover(Node):
         super().__init__("mover")
         self.kinematics_pose: KinematicsPose = None
         self.max_z = 0.25
-        self.z_levels = [0.04, 0.07, 0.115]
+        self.z_levels = [0.04, 0.085, 0.13]
         self.path_time = 3.0
         self.kinematics_pose_subscription = self.create_subscription(
             KinematicsPose,
