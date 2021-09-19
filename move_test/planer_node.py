@@ -6,6 +6,10 @@ from rclpy.node import Node
 from planing_interfaces.msg import WorldState
 
 
+def calculate_plan(initial_state: WorldState, target_state: WorldState):
+    return []
+
+
 class Planer(Node):
 
     def __init__(self):
@@ -14,6 +18,15 @@ class Planer(Node):
             WorldState,
             'target_state'
             , 10)
+        self.plan_request_action_server = ActionServer(self, ActionPlan,'action_plan',self.plan_request_callback)
+
+    def plan_request_callback(self, goal_handle):
+        self.get_logger().info('Received plan request')
+        goal_handle.succeed()
+
+        result = ActionPlan.Result()
+        result.plan = calculate_plan(goal_handle.request.initial_state, goal_handle.request.target_state)
+        return result
 
     def publish(self, left, middle, right, level):
         msg = WorldState()
@@ -28,18 +41,6 @@ def main(args=None):
     rclpy.init(args=args)
     planer = Planer()
 
-    """
-    left = sys.argv[1]
-    middle = sys.argv[2]
-    right = sys.argv[3]
-
-
-    planer.get_logger().info('left: %s ' % left)
-    planer.get_logger().info('middle: %s ' % middle)
-    planer.get_logger().info('right: %s ' % right)
-
-    planer.publish(left, middle, right, 0)
-    """
     print(
         "Usage: <position> <level>\n"
         "<position>: [ l | m | r ] for [ left | middle right ] \n"

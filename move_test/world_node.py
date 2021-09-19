@@ -15,11 +15,43 @@ class WorldAction():
         self.action_type = action_type
 
 
-class WorldState():
+class WorldState:
 
     def __init__(self, state):
         self.state = state
+        self.max_name_length = 0
+        for i in range(len(self.state)):
+            for j in range(len(self.state[i])):
+                if len(self.state[i][j]) > self.max_name_length:
+                    self.max_name_length = len(self.state[i][j])
+        #print(self.max_name_length)
 
+    def stacks(self):
+        return len(self.state)
+
+    def stack_size(self, stack: int):
+        return len(self.state[stack])
+
+    def __str__(self):
+        max_stack_size = 0
+        stack_count = self.stacks()
+        for stack_index in range(stack_count):
+            if max_stack_size < self.stack_size(stack_index):
+                max_stack_size = self.stack_size(stack_index)
+        output = ''
+        for stack_level in reversed(range(max_stack_size)):
+            for stack_index in range(stack_count):
+                stack = self.state[stack_index]
+                current_element = ' '
+                #print('at level %d with stack having length %d' % (stack_level, self.stack_size(stack_index)))
+                if self.stack_size(stack_index) -1 >= stack_level:
+                    #print(" %d >= %d" % (self.stack_size(stack_index), stack_level))
+                    current_element += stack[stack_level]
+                current_element = current_element.ljust(self.max_name_length + 2)
+                current_element += '|'
+                output += current_element
+            output += '\n'
+        return output
 
 class World(Node):
 
@@ -28,8 +60,9 @@ class World(Node):
         self.world_state = world_state
         #action server requested world state
         #action client movement
-        #action client planning
-        #publisher world state
+        #action client planning or service?
+        self.planning_client = ActionClient(self,ActionPlan, 'action_plan')
+        self.world_state_publisher = self.create_publisher(WorldState, 'world_state',10)
 
     def world_action_callback(self):
         # do stuff
@@ -41,13 +74,28 @@ class World(Node):
         goal = ActionPlan.Goal()
         goal.initial_state = self.world_state
         goal.target_state = target_state
-        future = self.planning_client.call_async(goal)
-        future.add_done_callback(lambda : print('plan received'))
+        self.planning_client.wait_for_server()
+        future = self.planning_client.send_goal_async(goal)
+        future.add_done_callback(self.plan_goal_callback)
+
+    def plan_goal_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info('goal rejected')
+            return
+        future = goal_handle.get_result_async()
+        future.add_done_callback(self.plan_result_callback)
+
+    def plan_result_callback(self, future):
+        result = future.result()
+        plan = result.plan
+        self.get_logger().info('received plan with %d steps' % len(plan))
+        #make move request
 
 def main(args=None):
     rclpy.init(args=args)
     #default world state
-    world_state = WorldState([["blue", "black"], ["yellow"], ["white"]])
+    world_state = WorldState([["blue", "black"], ["yellow", "grey"], ["white"]])
     world = World(world_state)
 
     rclpy.spin(world)
