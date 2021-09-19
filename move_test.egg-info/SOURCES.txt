@@ -2,7 +2,11 @@ package.xml
 setup.cfg
 setup.py
 move_test/__init__.py
+move_test/input_node.py
 move_test/move_node.py
+move_test/mover_node.py
+move_test/planer_node.py
+move_test/world_node.py
 move_test.egg-info/PKG-INFO
 move_test.egg-info/SOURCES.txt
 move_test.egg-info/dependency_links.txt
