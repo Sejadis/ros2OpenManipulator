@@ -23,6 +23,7 @@ setup(
             'move_node = move_test.move_node:main',
             'mover_node = move_test.mover_node:main',
             'planer_node = move_test.planer_node:main',
+            'world_node = move_test.world_node:main',
         ],
     },
 )
