@@ -1,9 +1,13 @@
+import time
+
 import rclpy
 from rclpy.node import Node
 from planing_interfaces.msg import WorldState
 from open_manipulator_msgs.srv import SetKinematicsPose, SetJointPosition
 from open_manipulator_msgs.msg import OpenManipulatorState, KinematicsPose
-from rclpy.qos import QoSProfile
+from planing_interfaces.action import SetMovementAction
+
+from move_test.world_node import WorldActionType
 
 
 class Point(object):
@@ -49,6 +53,10 @@ class Mover(Node):
             self.target_state_callback,
             10
         )
+        self.movement_server = ActionServer(self,
+                                            SetMovementAction,
+                                            'movement_action',
+                                            self.movement_action_callback)
         self.kinematic_pose_client = self.create_client(SetKinematicsPose, 'goal_task_space_path_position_only')
         while not self.kinematic_pose_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for kinematics service')
@@ -64,6 +72,8 @@ class Mover(Node):
         self.middle_position.set_from_values(0.25, 0.0, 0.04)
         self.right_position.set_from_values(0.25, 0.1, 0.04)
 
+        self.stacks = [self.left_position, self.middle_position, self.right_position]
+
         self.kinematics_future = None
         self.tool_future = None
         self.grabber_open: bool = False
@@ -71,6 +81,16 @@ class Mover(Node):
         self.queue = []
 
         print('Mover node started')
+
+    def movement_action_callback(self, goal_handle):
+        goal_handle.execute()
+        target_stack = self.stacks[goal_handle.request.target_stack]
+        grabber_target_state = True if goal_handle.request.type == WorldActionType.RELEASE else False
+        self.synthesize_movement(target_stack, goal_handle.request.level, grabber_target_state)
+        while not len(self.queue) == 0:
+            time.sleep(0.5)
+        goal_handle.succeed()
+        return
 
     def kinematics_pose_callback(self, msg: KinematicsPose):
         self.kinematics_pose = msg
@@ -117,6 +137,8 @@ class Mover(Node):
             print('right recognized')
             position = self.right_position
 
+        self.synthesize_movement(position, msg.level, not self.grabber_open)
+        """
         target_point = Point()
         target_point.set_from_point(position)
         target_point.z = self.z_levels[msg.level]
@@ -142,6 +164,31 @@ class Mover(Node):
 
         # self.send_pose_request(target_point)
         # self.set_grabber_state(not self.grabber_open)
+        """
+
+    def synthesize_movement(self, target_position, level, target_grabber_state):
+        target_point = Point()
+        target_point.set_from_point(target_position)
+        target_point.z = self.z_levels[level]
+        self.queue.clear()
+        # move upwards at current position first, to avoid collision
+        current_clear_position = Point()
+        current_clear_position.set_from_values(
+            self.kinematics_pose.pose.position.x,
+            self.kinematics_pose.pose.position.y,
+            self.max_z
+        )
+        self.send_pose_request(current_clear_position)
+
+        target_clear_position = Point()
+        target_clear_position.set_from_point(target_point)
+        target_clear_position.z = self.max_z
+        # enqueue top most position for target pos to avoid collision
+        self.queue.append(lambda: self.send_pose_request(target_clear_position))
+        # enqueue target point
+        self.queue.append(lambda: self.send_pose_request(target_point))
+        # enqueue grabber
+        self.queue.append(lambda: self.set_grabber_state(target_grabber_state))
 
 
 def main(args=None):
