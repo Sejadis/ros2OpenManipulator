@@ -35,9 +35,14 @@ def main(args=None):
     input_handler = InputHandler()
 
     print(
-        "Usage: <position> <level>\n"
-        "<position>: [ l | m | r ] for [ left | middle right ] \n"
-        "<level>: integer [ 0 - 2 ] for height, 0 being ground level")
+        "Usage: <operator> <arguments>\n"
+        "<operator>: \n"
+        "[set] for target world state\n"
+        "[do] for single action\n"
+        "[state] uses [set] with predefined states\n"
+        "<arguments>:\n[set]: state in format [[x, ...],[],...]\n"
+        "[do]: target block name and target stack index\n"
+        "[state]: one of [default | 1 | 2 | 3 ]")
     input_line = input("--> ")
     (operator, data) = parse_input(input_line)
 

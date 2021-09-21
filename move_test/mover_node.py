@@ -93,7 +93,6 @@ class Mover(Node):
         print('Mover node started')
 
     def movement_action_callback(self, goal_handle):
-        # goal_handle.execute()
         target_stack = self.stacks[goal_handle.request.target_stack]
         grabber_target_state = True if goal_handle.request.type == WorldActionType.RELEASE else False
         self.synthesize_movement(target_stack, goal_handle.request.level, grabber_target_state)
@@ -132,10 +131,9 @@ class Mover(Node):
         request = SetJointPosition.Request()
         request.path_time = self.path_time
         request.joint_position.joint_name = ['gripper']
-        request.joint_position.position = [0.01] if should_open else [0.0]
+        request.joint_position.position = [0.01] if should_open else [0.005]
         self.grabber_open = not self.grabber_open
         self.tool_future = self.tool_client.call_async(request)
-        # self.tool_future.add_done_callback(lambda future: print('tool state done %s' % future.done()))
 
     def target_state_callback(self, msg):
         self.get_logger().info("Received target state %s" % msg)
@@ -188,7 +186,6 @@ def main(args=None):
     # rclpy.spin(mover)
 
     rclpy.shutdown()
-    print("did shutdown")
 
 
 if __name__ == '__main__':

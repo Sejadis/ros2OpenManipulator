@@ -32,7 +32,6 @@ class WorldState:
             for j in range(len(self.state[i])):
                 if len(self.state[i][j]) > self.max_name_length:
                     self.max_name_length = len(self.state[i][j])
-        # print(self.max_name_length)
 
     def stacks(self):
         return len(self.state)
@@ -65,9 +64,7 @@ class WorldState:
             for stack_index in range(stack_count):
                 stack = self.state[stack_index]
                 current_element = ' '
-                # print('at level %d with stack having length %d' % (stack_level, self.stack_size(stack_index)))
                 if self.stack_size(stack_index) - 1 >= stack_level:
-                    # print(" %d >= %d" % (self.stack_size(stack_index), stack_level))
                     current_element += stack[stack_level]
                 current_element = current_element.ljust(self.max_name_length + 2)
                 current_element += '|'
@@ -113,14 +110,14 @@ class World(Node):
                                                            10,
                                                            callback_group=self.data_group)
 
-        print('World Node started with state:\n%s\n' % self.world_state)
+        print('World Node started \n-->\n%s\n' % self.world_state)
 
     def world_action_callback(self, goal_handle):
         # we got a specific action, no need for a plan, directly call movement
         # split into 2 parts:
         # move to target object and grab
         # move to target position and release
-        self.get_logger().info('received request for action: %s to %s' %
+        self.get_logger().info('REQUEST: %s --> %s' %
                                (goal_handle.request.object,
                                 goal_handle.request.target_stack))
         if not self.active_movement_action_completed:
@@ -128,7 +125,6 @@ class World(Node):
             goal_handle.abort()
             response = MovementAction.Result()
             return response
-        # goal_handle.execute()
         self.active_movement_action_completed = False
         is_top_level, stack = self.world_state.is_top_level_object(goal_handle.request.object)
         if not is_top_level:
@@ -148,7 +144,7 @@ class World(Node):
             time.sleep(0.5)
         goal_handle.succeed()
         self.world_state.move_to(self.current_action_request.object, self.current_action_request.target_stack)
-        print('New world state:\n%s\n' % self.world_state)
+        print('-->\n%s\n' % self.world_state)
         response = MovementAction.Result()
         return response
 
@@ -159,20 +155,18 @@ class World(Node):
         goal.level = target_level
         goal.target_stack = target_stack
         self.movement_client.wait_for_server()
-        self.move_goal_future = self.movement_client.send_goal_async(goal)
-        self.move_goal_future.add_done_callback(self.movement_goal_callback)
+        future = self.movement_client.send_goal_async(goal)
+        future.add_done_callback(self.movement_goal_callback)
 
     def movement_goal_callback(self, future):
         goal_handle = future.result()
-        print('in move goal callback %s' % (goal_handle))
         if not goal_handle.accepted:
             self.get_logger().info('movement goal rejected')
             return
-        self.move_result_future = goal_handle.get_result_async()
-        self.move_result_future.add_done_callback(self.movement_result_callback)
+        future = goal_handle.get_result_async()
+        future.add_done_callback(self.movement_result_callback)
 
     def movement_result_callback(self, future):
-        print('in move result callback')
         result = future.result()
         self.get_logger().info('movement result received')
         self.active_movement_action_completed = True
@@ -184,7 +178,6 @@ class World(Node):
             goal_handle.abort()
             response = SetWorldState.Result()
             return response
-        # goal_handle.execute()
         self.active_planning_action_completed = False
         self.request_plan(goal_handle.request.target_state)
         while not self.active_planning_action_completed:
