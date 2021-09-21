@@ -6,7 +6,7 @@ from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from planing_interfaces.msg import WorldState
+from planing_interfaces.msg import WorldState, WorldStateV2
 from open_manipulator_msgs.srv import SetKinematicsPose, SetJointPosition
 from open_manipulator_msgs.msg import OpenManipulatorState, KinematicsPose
 from planing_interfaces.action import SetMovementAction
@@ -38,7 +38,7 @@ class Mover(Node):
         self.kinematics_pose: KinematicsPose = None
         self.max_z = 0.25
         self.z_levels = [0.04, 0.085, 0.13]
-        self.path_time = 3.0
+        self.path_time = 1.0
         self.data_group = MutuallyExclusiveCallbackGroup()
         self.work_group = MutuallyExclusiveCallbackGroup()
         self.kinematics_pose_subscription = self.create_subscription(
@@ -62,6 +62,11 @@ class Mover(Node):
             10,
             callback_group=self.data_group
         )
+        self.world_state_subscription = self.create_subscription(WorldStateV2,
+                                                                 'world_state',
+                                                                 self.world_state_callback,
+                                                                 10,
+                                                                 callback_group=self.data_group)
         self.movement_server = ActionServer(self,
                                             SetMovementAction,
                                             'movement_action',
@@ -92,6 +97,9 @@ class Mover(Node):
 
         print('Mover node started')
 
+    def world_state_callback(self, msg):
+        print("msg %s" % msg.state)
+
     def movement_action_callback(self, goal_handle):
         target_stack = self.stacks[goal_handle.request.target_stack]
         grabber_target_state = True if goal_handle.request.type == WorldActionType.RELEASE else False
@@ -99,7 +107,6 @@ class Mover(Node):
         while not len(self.queue) == 0:
             time.sleep(0.5)
         goal_handle.succeed()
-        print('succeeded')
         response = SetMovementAction.Result()
         return response
 
@@ -111,8 +118,8 @@ class Mover(Node):
             self.is_moving = True
         elif self.is_moving:
             self.is_moving = False
-            print('stopped moving, continue to next item on plan')
             if len(self.queue) > 0:
+                print('stopped moving, continue to next item on plan')
                 self.queue.pop(0)()
                 print('%d items left in queue ' % len(self.queue))
 
@@ -131,7 +138,7 @@ class Mover(Node):
         request = SetJointPosition.Request()
         request.path_time = self.path_time
         request.joint_position.joint_name = ['gripper']
-        request.joint_position.position = [0.01] if should_open else [0.005]
+        request.joint_position.position = [0.01] if should_open else [0.0025]
         self.grabber_open = not self.grabber_open
         self.tool_future = self.tool_client.call_async(request)
 

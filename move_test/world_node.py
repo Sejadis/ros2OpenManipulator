@@ -26,6 +26,7 @@ class WorldAction:
 class WorldState:
 
     def __init__(self, state):
+        self.on_value_changed_callback = None
         self.state = state
         self.max_name_length = 0
         for i in range(len(self.state)):
@@ -52,6 +53,9 @@ class WorldState:
         state, current_stack = self.is_top_level_object(name)
         self.state[current_stack].pop()
         self.state[stack].append(name)
+        if self.on_value_changed_callback is not None:
+            print('calling callback')
+            self.on_value_changed_callback()
 
     def __str__(self):
         max_stack_size = 0
@@ -80,6 +84,7 @@ class World(Node):
     def __init__(self, world_state: WorldState):
         super(World, self).__init__("world")
         self.world_state = world_state
+        # self.world_state.on_value_changed_callback = self.on_world_state_changed
         self.server_group = MutuallyExclusiveCallbackGroup()
         self.client_group = MutuallyExclusiveCallbackGroup()
         self.data_group = MutuallyExclusiveCallbackGroup()
@@ -111,6 +116,12 @@ class World(Node):
                                                            callback_group=self.data_group)
 
         print('World Node started \n-->\n%s\n' % self.world_state)
+
+    def on_world_state_changed(self):
+        print('in callback')
+        msg = WorldStateV2()
+        msg.state = self.world_state.state
+        self.world_state_publisher.publish(msg)
 
     def world_action_callback(self, goal_handle):
         # we got a specific action, no need for a plan, directly call movement
@@ -149,7 +160,6 @@ class World(Node):
         return response
 
     def request_movement(self, action_type: WorldActionType, target_level, target_stack):
-        print('requesting movement')
         goal = SetMovementAction.Goal()
         goal.type = int(action_type)
         goal.level = target_level
@@ -168,7 +178,6 @@ class World(Node):
 
     def movement_result_callback(self, future):
         result = future.result()
-        self.get_logger().info('movement result received')
         self.active_movement_action_completed = True
 
     def world_state_callback(self, goal_handle):
