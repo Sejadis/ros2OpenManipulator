@@ -24,6 +24,7 @@ setup(
             'mover_node = move_test.mover_node:main',
             'planer_node = move_test.planer_node:main',
             'world_node = move_test.world_node:main',
+            'input_node = move_test.input_node:main',
         ],
     },
 )

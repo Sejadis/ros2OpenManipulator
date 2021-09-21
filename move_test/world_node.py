@@ -1,11 +1,16 @@
 import time
 import rclpy
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.action import ActionServer, ActionClient
 from rclpy.node import Node
-from enum import Enum
+
+from planing_interfaces.msg import WorldStateV2
+from enum import IntEnum
 from planing_interfaces.action import ActionPlan, MovementAction, SetWorldState, SetMovementAction
 
 
-class WorldActionType(Enum):
+class WorldActionType(IntEnum):
     GRAB = 1
     RELEASE = 2
 
@@ -38,11 +43,16 @@ class WorldState:
     def is_top_level_object(self, name):
         for i in range(self.stacks()):
             stack_size = self.stack_size(i)
-            if self.state[i][stack_size - 1] == name:
+            if stack_size > 0 and self.state[i][stack_size - 1] == name:
                 return True, i
 
         # none of the top objects on any stack match the requested object
         return False, None
+
+    def move_to(self, name, stack):
+        state, current_stack = self.is_top_level_object(name)
+        self.state[current_stack].pop()
+        self.state[stack].append(name)
 
     def __str__(self):
         max_stack_size = 0
@@ -73,26 +83,37 @@ class World(Node):
     def __init__(self, world_state: WorldState):
         super(World, self).__init__("world")
         self.world_state = world_state
+        self.server_group = MutuallyExclusiveCallbackGroup()
+        self.client_group = MutuallyExclusiveCallbackGroup()
+        self.data_group = MutuallyExclusiveCallbackGroup()
+        self.current_action_request = None
         # action server requested world state
         self.world_action_server = ActionServer(self,
                                                 MovementAction,
                                                 'world_action',
-                                                self.world_action_callback)
+                                                self.world_action_callback,
+                                                callback_group=self.server_group)
         self.world_state_server = ActionServer(self,
                                                SetWorldState,
                                                'world_state',
-                                               self.world_state_callback)
+                                               self.world_state_callback,
+                                               callback_group=self.server_group)
         # action client movement
         self.movement_client = ActionClient(self,
                                             SetMovementAction,
-                                            'movement_action')
+                                            'movement_action',
+                                            callback_group=self.client_group)
         # action client planning or service?
         self.planning_client = ActionClient(self,
                                             ActionPlan,
-                                            'action_plan')
-        self.world_state_publisher = self.create_publisher(WorldState,
+                                            'action_plan',
+                                            callback_group=self.client_group)
+        self.world_state_publisher = self.create_publisher(WorldStateV2,
                                                            'world_state',
-                                                           10)
+                                                           10,
+                                                           callback_group=self.data_group)
+
+        print('World Node started with state:\n%s\n' % self.world_state)
 
     def world_action_callback(self, goal_handle):
         # we got a specific action, no need for a plan, directly call movement
@@ -101,16 +122,21 @@ class World(Node):
         # move to target position and release
         self.get_logger().info('received request for action: %s to %s' %
                                (goal_handle.request.object,
-                                goal_handle.request.target))
+                                goal_handle.request.target_stack))
         if not self.active_movement_action_completed:
             self.get_logger().info('There is still an active movement action running, rejecting new request')
             goal_handle.abort()
-        goal_handle.execute()
+            response = MovementAction.Result()
+            return response
+        # goal_handle.execute()
         self.active_movement_action_completed = False
         is_top_level, stack = self.world_state.is_top_level_object(goal_handle.request.object)
         if not is_top_level:
+            print('requested object is not on top of a stack, aborting')
             goal_handle.abort()
-            return
+            response = MovementAction.Result()
+            return response
+        self.current_action_request = goal_handle.request
         current_stack_size = self.world_state.stack_size(stack)
         self.request_movement(WorldActionType.GRAB, current_stack_size - 1, stack)
         while not self.active_movement_action_completed:
@@ -121,26 +147,32 @@ class World(Node):
         while not self.active_movement_action_completed:
             time.sleep(0.5)
         goal_handle.succeed()
-        return
+        self.world_state.move_to(self.current_action_request.object, self.current_action_request.target_stack)
+        print('New world state:\n%s\n' % self.world_state)
+        response = MovementAction.Result()
+        return response
 
     def request_movement(self, action_type: WorldActionType, target_level, target_stack):
+        print('requesting movement')
         goal = SetMovementAction.Goal()
-        goal.type = action_type
+        goal.type = int(action_type)
         goal.level = target_level
         goal.target_stack = target_stack
         self.movement_client.wait_for_server()
-        future = self.movement_client.send_goal_async(goal)
-        future.add_done_callback(self.movement_goal_callback)
+        self.move_goal_future = self.movement_client.send_goal_async(goal)
+        self.move_goal_future.add_done_callback(self.movement_goal_callback)
 
     def movement_goal_callback(self, future):
         goal_handle = future.result()
+        print('in move goal callback %s' % (goal_handle))
         if not goal_handle.accepted:
             self.get_logger().info('movement goal rejected')
             return
-        future = goal_handle.get_result_async()
-        future.add_done_callback(self.movement_result_callback)
+        self.move_result_future = goal_handle.get_result_async()
+        self.move_result_future.add_done_callback(self.movement_result_callback)
 
     def movement_result_callback(self, future):
+        print('in move result callback')
         result = future.result()
         self.get_logger().info('movement result received')
         self.active_movement_action_completed = True
@@ -150,13 +182,16 @@ class World(Node):
         if not self.active_planning_action_completed:
             self.get_logger().info('There is still an active planning action running, rejecting new request')
             goal_handle.abort()
-        goal_handle.execute()
+            response = SetWorldState.Result()
+            return response
+        # goal_handle.execute()
         self.active_planning_action_completed = False
         self.request_plan(goal_handle.request.target_state)
         while not self.active_planning_action_completed:
             time.sleep(0.5)
         goal_handle.succeed()
-        return
+        response = SetWorldState.Result()
+        return response
 
     def request_plan(self, target_state: WorldState):
         goal = ActionPlan.Goal()
@@ -187,8 +222,10 @@ def main(args=None):
     # default world state
     world_state = WorldState([["blue", "black"], ["yellow", "grey"], ["white"]])
     world = World(world_state)
-
-    rclpy.spin(world)
+    executor = MultiThreadedExecutor()
+    executor.add_node(world)
+    executor.spin()
+    # rclpy.spin(world)
     rclpy.shutdown()
 
 

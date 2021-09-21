@@ -1,8 +1,10 @@
 import rclpy
+from rclpy.action import ActionClient
 from rclpy.node import Node
 import ast
 from .world_node import WorldState
 from planing_interfaces.action import MovementAction, SetWorldState
+from planing_interfaces.msg import StackData
 
 
 class InputHandler(Node):
@@ -13,20 +15,19 @@ class InputHandler(Node):
                                                 MovementAction,
                                                 'world_action')
         self.world_state_client = ActionClient(self,
-                                                SetWorldState,
-                                                'world_action')
-        self.world_state_client = ActionClient(...)
+                                               SetWorldState,
+                                               'world_action')
 
     def set_target_action(self, obj, target):
         goal = MovementAction.Goal()
         goal.object = obj
         goal.target_stack = target
-        self.world_action_client.call_async(goal)
+        self.world_action_client.send_goal_async(goal)
 
-    def set_target_state(self, state: WorldState):
+    def set_target_state(self, state):
         goal = SetWorldState.Goal()
         goal.target_state = state
-        self.world_state_client.call_async(goal)
+        self.world_state_client.send_goal_async(goal)
 
 
 def main(args=None):
@@ -46,11 +47,12 @@ def main(args=None):
             data = ast.literal_eval(args[1])
             input_handler.set_target_state(data)
         elif operator == "do":
-            input_handler.set_target_action(data[0], data[1])
+            input_handler.set_target_action(data[0], int(data[1]))
         elif operator == "state":
             state = None
             if data == "default":
-                state = WorldState(default_state)
+                state = default_state
+                # state = WorldState(default_state)
             elif data == "1":
                 state = WorldState(custom_state_1)
             elif data == "2":
