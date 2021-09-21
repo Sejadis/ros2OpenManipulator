@@ -162,18 +162,14 @@ class Mover(Node):
             self.max_z
         )
         self.send_pose_request(current_clear_position)
-        print("sending request for %s" % current_clear_position)
         target_clear_position = Point()
         target_clear_position.set_from_point(target_point)
         target_clear_position.z = self.max_z
         # enqueue top most position for target pos to avoid collision
-        print("appending request for %s" % target_clear_position)
         self.queue.append(lambda: self.send_pose_request(target_clear_position))
         # enqueue target point
-        print("appending request for %s" % target_point)
         self.queue.append(lambda: self.send_pose_request(target_point))
         # enqueue grabber
-        print("appending request for grabber %s" % target_grabber_state)
         self.queue.append(lambda: self.set_grabber_state(target_grabber_state))
 
 
